@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Previsão e Planejamento de Aulas</title>
+    <!-- Carregando Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Carregando a fonte Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        /* Aplicando a fonte Inter como padrão */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Estilo para o spinner de carregamento */
+        .loader {
+            border-top-color: #3498db;
+            -webkit-animation: spin 1s linear infinite;
+            animation: spin 1s linear infinite;
+        }
+        @-webkit-keyframes spin {
+            0% { -webkit-transform: rotate(0deg); }
+            100% { -webkit-transform: rotate(360deg); }
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+
+    <!-- Container principal do módulo -->
+    <div class="w-full max-w-4xl bg-white rounded-2xl shadow-xl p-6 md:p-8">
+        
+        <!-- Cabeçalho -->
+        <header class="mb-6">
+            <h1 class="text-2xl md:text-3xl font-bold text-gray-800">
+                Previsão do Tempo e Planejamento de Aulas Práticas
+            </h1>
+            <p class="text-gray-500 mt-1">
+                Insira uma localização para ver a previsão e recomendações para atividades ao ar livre.
+            </p>
+        </header>
+
+        <!-- Seção de Busca -->
+        <div class="flex flex-col sm:flex-row gap-3 mb-6">
+            <input 
+                type="text" 
+                id="locationInput"
+                placeholder="Ex: São Paulo, BR"
+                class="flex-grow p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+            >
+            <button 
+                id="searchButton"
+                class="bg-blue-600 text-white font-semibold px-6 py-3 rounded-lg hover:bg-blue-700 transition-all duration-200 shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            >
+                Buscar Previsão
+            </button>
+        </div>
+
+        <!-- Área de Conteúdo (Resultados) -->
+        <div id="resultsContainer">
+            
+            <!-- Estado de Carregamento -->
+            <div id="loader" class="flex justify-center items-center py-10 hidden">
+                <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12"></div>
+                <p class="ml-4 text-gray-600">Buscando previsão...</p>
+            </div>
+
+            <!-- Estado de Erro -->
+            <div id="errorMessage" class="text-center p-6 bg-red-50 border border-red-200 text-red-700 rounded-lg hidden">
+                <p id="errorText"></p>
+            </div>
+
+            <!-- Estado Inicial / Boas-vindas -->
+            <div id="welcomeMessage" class="text-center p-6 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg">
+                <p>Por favor, insira uma localização para começar.</p>
+                <p class="text-sm mt-2">
+                    <strong>Nota:</strong> Esta ferramenta usa a API OpenWeatherMap. Você deve 
+                    <a href="https://openweathermap.org/appid" target="_blank" class="text-blue-600 underline hover:text-blue-800">
+                        registrar e inserir sua própria chave de API
+                    </a> 
+                    no código (variável `apiKey`) para funcionar.
+                </p>
+            </div>
+
+            <!-- Resultados da Previsão -->
+            <div id="forecastContainer" class="hidden">
+                <h2 class="text-xl font-bold text-gray-700 mb-4" id="locationTitle"></h2>
+                
+                <!-- Grid responsivo para os dias -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                    <!-- Os cartões dos dias serão inseridos aqui pelo JavaScript -->
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <script>
+        // --- CHAVE DA API (IMPORTANTE) ---
+        // Obtenha sua chave de API gratuita em https://openweathermap.org/appid
+        const apiKey = "a20a6eac94fbbb7f3cafade4a7717db0"; 
+
+        // --- SELEÇÃO DE ELEMENTOS DO DOM ---
+        const locationInput = document.getElementById('locationInput');
+        // ... (restante dos seletores) ...
+        const searchButton = document.getElementById('searchButton');
+        const resultsContainer = document.getElementById('resultsContainer');
+        const loader = document.getElementById('loader');
+        const errorMessage = document.getElementById('errorMessage');
+        const errorText = document.getElementById('errorText');
+        const welcomeMessage = document.getElementById('welcomeMessage');
+        const forecastContainer = document.getElementById('forecastContainer');
+        const locationTitle = document.getElementById('locationTitle');
+
+        // --- MANIPULADOR DE EVENTOS ---
+        searchButton.addEventListener('click', handleSearch);
+        locationInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                handleSearch();
+            }
+        });
+
+        /**
+         * Função principal que orquestra a busca.
+         */
+        async function handleSearch() {
+            const location = locationInput.value.trim();
+            
+            if (!location) {
+                showError("Por favor, insira um nome de localização válido.");
+                return;
+            }
+
+            if (apiKey === "SEU_API_KEY_AQUI") {
+                showError("Por favor, insira sua chave de API do OpenWeatherMap no código (variável 'apiKey') para continuar.");
+                welcomeMessage.classList.add('hidden');
+                return;
+            }
+
+            // 1. Resetar UI
+            showLoading(true);
+            showError(null);
+            welcomeMessage.classList.add('hidden');
+            forecastContainer.classList.add('hidden');
+
+            try {
+                // 2. Buscar dados reais da API
+                const rawData = await fetchRealWeather(location);
+                
+                // 3. Processar e formatar os dados
+                const weatherData = processWeatherData(rawData);
+
+                // 4. Renderizar resultados
+                renderForecast(weatherData);
+
+            } catch (error) {
+                // 5. Lidar com erros
+                showError(error.message);
+            } finally {
+                // 6. Parar carregamento
+                showLoading(false);
+            }
+        }
+
+        /**
+         * Controla a exibição do spinner de carregamento.
+         */
+        function showLoading(isLoading) {
+            // ... (função inalterada) ...
+            if (isLoading) {
+                loader.classList.remove('hidden');
+            } else {
+                loader.classList.add('hidden');
+            }
+        }
+
+        /**
+         * Mostra uma mensagem de erro na UI.
+         */
+        function showError(message) {
+            // ... (função inalterada) ...
+            if (message) {
+                errorText.textContent = message;
+                errorMessage.classList.remove('hidden');
+            } else {
+                errorMessage.classList.add('hidden');
+            }
+        }
+
+        /**
+         * Renderiza os dados da previsão na tela.
+         */
+        function renderForecast(data) {
+            // ... (função inalterada) ...
+            locationTitle.textContent = `Previsão para ${data.locationName}`;
+            
+            const gridContainer = forecastContainer.querySelector('.grid');
+            gridContainer.innerHTML = '';
+
+            data.forecast.forEach(day => {
+                const recommendation = getRecommendation(day);
+                const card = createDayCard(day, recommendation);
+                gridContainer.appendChild(card);
+            });
+
+            forecastContainer.classList.remove('hidden');
+        }
+
+        /**
+         * Cria o elemento HTML para o cartão de um dia.
+         */
+        function createDayCard(day, recommendation) {
+            // ... (função inalterada) ...
+            const card = document.createElement('div');
+            card.className = `border rounded-lg p-4 bg-white shadow-sm flex flex-col ${recommendation.borderColor} border-l-4`;
+
+            card.innerHTML = `
+                <div class="flex-grow">
+                    <p class="font-bold text-lg text-gray-800">${day.weekday}</p>
+                    <p class="text-sm text-gray-500 mb-3">${day.date}</p>
+                    
+                    <div class="text-4xl text-center my-4">${getWeatherIcon(day.condition)}</div>
+                    
+                    <p class="text-2xl font-bold text-center text-gray-800">${day.temp_max}°C</p>
+                    <p class="text-center text-gray-500 mb-4">Min: ${day.temp_min}°C</p>
+
+                    <div class="space-y-2 text-sm mb-4">
+                        <p class="text-gray-700">☔ Precipitação: <strong>${day.precipitation}%</strong></p>
+                        <p class="text-gray-700">💨 Vento: <strong>${day.wind_speed} km/h</strong></p>
+                        <p class="text-gray-700">👁️ Visibilidade: <strong>${getVisibilityCategory(day.visibility)}</strong></p>
+                    </div>
+
+                    <!-- Recomendação -->
+                    <div class="p-2 rounded-md text-center font-semibold ${recommendation.bgColor} ${recommendation.textColor}">
+                        ${recommendation.text}
+                    </div>
+                </div>
+                
+                <!-- Planejamento (Notas) -->
+                <div class="mt-4 pt-4 border-t">
+                    <label class="text-sm font-medium text-gray-600 mb-1 block">Notas da Aula:</label>
+                    <textarea 
+                        class="w-full p-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" 
+                        rows="3" 
+                        placeholder="Ex: Aula de biologia no pátio..."
+                    ></textarea>
+                </div>
+            `;
+            return card;
+        }
+
+
+        // --- LÓGICA DE NEGÓCIO E DADOS DA API ---
+
+        /**
+         * Busca dados reais da API OpenWeatherMap (Previsão de 5 dias / 3 horas).
+         * @param {string} location - O nome da localização.
+         * @returns {Promise<object>} - Uma promessa que resolve com os dados brutos da API.
+         */
+        async function fetchRealWeather(location) {
+            const apiUrl = `https://api.openweathermap.org/data/2.5/forecast?q=${location}&appid=${apiKey}&units=metric&lang=pt_br`;
+
+            const response = await fetch(apiUrl);
+
+            if (!response.ok) {
+                if (response.status === 401) {
+                    throw new Error("Chave de API inválida ou não autorizada. Verifique sua chave no código.");
+                }
+                if (response.status === 404) {
+                    throw new Error("Localização não encontrada. Verifique o nome e tente novamente.");
+                }
+                throw new Error("Não foi possível buscar os dados do tempo. Tente novamente mais tarde.");
+            }
+
+            return await response.json();
+        }
+
+        /**
+         * Processa os dados brutos da API (que vêm em blocos de 3h) 
+         * e os agrupa por dia, formatando-os para o nosso app.
+         * @param {object} rawData - Dados brutos da API.
+         * @returns {object} - Objeto formatado com locationName e array de forecast.
+         */
+        function processWeatherData(rawData) {
+            const locationName = `${rawData.city.name}, ${rawData.city.country}`;
+            const dailyData = {}; // Objeto para agrupar dados por dia
+
+            // 1. Agrupa os blocos de 3 horas por dia
+            rawData.list.forEach(item => {
+                const date = item.dt_txt.split(' ')[0]; // Pega a parte YYYY-MM-DD
+                if (!dailyData[date]) {
+                    dailyData[date] = [];
+                }
+                dailyData[date].push(item);
+            });
+
+            // 2. Processa os dados agrupados para encontrar o resumo de cada dia
+            const forecast = [];
+            const weekdays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+            for (const date in dailyData) {
+                const dayChunks = dailyData[date];
+
+                // Encontra min/max das temperaturas do dia
+                const temp_max = Math.max(...dayChunks.map(chunk => chunk.main.temp_max));
+                const temp_min = Math.min(...dayChunks.map(chunk => chunk.main.temp_min));
+                
+                // Pega a maior probabilidade de precipitação (pop) do dia
+                const precipitation = Math.max(...dayChunks.map(chunk => chunk.pop)); // Valor de 0 a 1
+
+                // Pega a maior velocidade de vento do dia (convertido de m/s para km/h)
+                const wind_speed_ms = Math.max(...dayChunks.map(chunk => chunk.wind.speed));
+                const wind_speed_kmh = wind_speed_ms * 3.6;
+
+                // Pega a menor visibilidade do dia (em metros)
+                const visibility_m = Math.min(...dayChunks.map(chunk => chunk.visibility));
+
+                // Pega a condição do tempo do meio-dia (ou o primeiro bloco, se não houver)
+                const middayChunk = dayChunks.find(chunk => chunk.dt_txt.includes("12:00:00")) || dayChunks[0];
+                let condition = middayChunk.weather[0].description;
+                condition = condition.charAt(0).toUpperCase() + condition.slice(1); // Capitaliza
+
+                // Formata data e dia da semana
+                const dateObj = new Date(`${date}T12:00:00`); // Usa T12:00 para evitar problemas de fuso
+                const formattedDate = dateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+                const weekday = weekdays[dateObj.getDay()];
+
+                forecast.push({
+                    date: formattedDate,
+                    weekday: weekday,
+                    condition: condition,
+                    temp_max: Math.round(temp_max),
+                    temp_min: Math.round(temp_min),
+                    precipitation: Math.round(precipitation * 100), // Converte para %
+                    wind_speed: Math.round(wind_speed_kmh), // Converte para km/h
+                    visibility: visibility_m // Adiciona visibilidade em metros
+                });
+            }
+
+            // Ajusta o primeiro dia para "Hoje"
+            if (forecast.length > 0) {
+                const today = new Date();
+                const firstDate = new Date(`${Object.keys(dailyData)[0]}T12:00:00`);
+                if (today.getDate() === firstDate.getDate()) {
+                    forecast[0].weekday = "Hoje";
+                }
+            }
+
+            return { locationName, forecast };
+        }
+
+
+        /**
+         * Retorna um emoji com base na condição do tempo (descrições do OWM).
+         * @param {string} condition - A descrição da condição (em português).
+         * @returns {string} - Um emoji.
+         */
+        function getWeatherIcon(condition) {
+            const cond = condition.toLowerCase();
+            
+            if (cond.includes("trovoada")) return "⛈️";
+            if (cond.includes("chuva forte") || cond.includes("chuva extrema")) return "🌧️";
+            if (cond.includes("chuva")) return "🌦️"; // Inclui leve, moderada
+            if (cond.includes("neve")) return "❄️";
+            if (cond.includes("névoa") || cond.includes("neblina")) return "🌫️";
+            if (cond.includes("céu limpo")) return "☀️";
+            if (cond.includes("poucas nuvens")) return "🌤️";
+            if (cond.includes("nuvens dispersas")) return "⛅";
+            if (cond.includes("nublado")) return "☁️";
+            
+            return "🌍"; // Padrão
+        }
+
+        /**
+         * Retorna a categoria da visibilidade (Boa, Moderada, Baixa).
+         * @param {number} visibility_m - Visibilidade em metros.
+         * @returns {string} - A categoria.
+         */
+        function getVisibilityCategory(visibility_m) {
+            if (visibility_m < 2000) return "Baixa";
+            if (visibility_m < 5000) return "Moderada";
+            return "Boa";
+        }
+
+        /**
+         * Define a recomendação para a aula prática com base nos critérios.
+         * Esta função é a mesma que você selecionou, mas agora adaptada
+         * para as descrições em português do OWM.
+         * @param {object} day - Dados da previsão do dia.
+         * @returns {object} - Objeto com texto e cores da recomendação.
+         */
+        function getRecommendation(day) {
+            // Apenas extrai os dados necessários para a nova lógica
+            const { wind_speed, condition } = day;
+            const cond = condition.toLowerCase();
+
+            // --- LÓGICA BASEADA NA NOVA TABELA SIMPLIFICADA ---
+
+            // 1. Critérios para "Crítico"
+            // "Chuva forte" (incluindo trovoada, etc.) OU "vento > 30km/h"
+            const isBadWeather = cond.includes("forte") || cond.includes("trovoada") || cond.includes("extrema") || cond.includes("tempestade");
+            
+            if (isBadWeather || wind_speed > 30) {
+                return {
+                    text: "Crítico",
+                    bgColor: "bg-red-100",
+                    textColor: "text-red-800",
+                    borderColor: "border-red-400"
+                };
+            }
+
+            // 2. Critérios para "Moderado"
+            // "Nublado" OU "chuva leve" (qualquer chuva que não seja "forte")
+            const isCloudy = cond.includes("nublado") || cond.includes("nuvens dispersas");
+            // Pega "chuva", "chuva leve", "chuva moderada", mas não "chuva forte" (já pego acima)
+            const isLightRain = cond.includes("chuva") && !isBadWeather; 
+
+            if (isCloudy || isLightRain) {
+                return {
+                    text: "Moderado",
+                    bgColor: "bg-yellow-100",
+                    textColor: "text-yellow-800",
+                    borderColor: "border-yellow-400"
+                };
+            }
+            
+            // 3. Critérios para "Ideal"
+            // "Sol" (céu limpo, poucas nuvens) E "vento < 15 km/h"
+            const isSunny = cond.includes("céu limpo") || cond.includes("poucas nuvens") || cond.includes("sol");
+            
+            if (isSunny && wind_speed < 15) {
+                return {
+                    text: "Ideal",
+                    bgColor: "bg-green-100",
+                    textColor: "text-green-800",
+                    borderColor: "border-green-400"
+                };
+            }
+
+            // 4. Caso Padrão (Se não se encaixar em nada, ex: névoa, ou sol com vento > 15)
+            // A tabela não cobre todas as possibilidades.
+            // Vamos classificar casos não definidos (como "névoa" ou "sol com vento de 20km/h") como "Moderado".
+            return {
+                text: "Moderado",
+                bgColor: "bg-yellow-100",
+                textColor: "text-yellow-800",
+                borderColor: "border-yellow-400"
+            };
+        }
+
+    </script>
+</body>
+</html>

@@ -3,7 +3,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "./components/Card";
 import { Badge } from "./components/Badge"
 //import { useCharset } from "./useCharset";
-
+import { InteractiveButton } from "./components/InteractiveButton";
 
 // Ícones
 import {
